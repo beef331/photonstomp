@@ -1,9 +1,9 @@
 import sdl2/sdl, opengl, vmath
 import raymarch/[shaders, cameras]
-import std/times
+import std/[monotimes, times]
 
 const
-  WindowFlags = WindowOpenGl or WindowShown
+  WindowFlags = WindowOpenGl
 
 type App = object
   window: Window
@@ -11,7 +11,7 @@ type App = object
   isRunning: bool
   rect: Gluint
 
-var camera = Camera(size: vec2(640, 480), pos: vec3(0, 0, -10), distance: 100f)
+var camera = Camera(size: vec2(1280, 720), pos: vec3(0, 0, -10), distance: 100f)
 
 proc init: App =
   if init(INIT_VIDEO) == 0:
@@ -72,11 +72,13 @@ let shader = getDefaultShader()
 bindRect(shader)
 glUseProgram(shader)
 shader.setUniformBuff("Camera", camera)
-let start = cpuTime()
+var time = 0f
 while app.isRunning:
-  shader.setUniform("time", cpuTime() - start)
+  let startTime = getMonoTime()
   app.poll
   app.draw
+  time += (getMonoTime() - startTime).inMicroseconds.float / 1_000_000f
+  shader.setUniform("time", time)
 
 glDeleteContext(app.context)
 app.window.destroyWindow

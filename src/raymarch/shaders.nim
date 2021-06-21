@@ -1,5 +1,5 @@
 import opengl
-import std/options
+import std/[options, macros]
 const
   vertexShader = """
 #version 330 core
@@ -18,25 +18,33 @@ in vec4 vertexColor; // the input variable from the vertex shader (same name and
 
 uniform Camera
 {
-  vec2 size;
   vec3 pos;
+  vec2 size;
   float distance;
 } camera;
 
 uniform float time;
 
-vec4 rayMarch(vec2 coord){
-  vec3 dir = vec3(coord - vec2(0.5), 1);
-  vec3 pos = vec3(sin(time * 100) * 3.0, 1, -10);
+struct RayResult{
+  float hit;
+  vec3 normal;
+  vec3 rayDir;
+};
+
+RayResult rayMarch(vec2 coord){
+  RayResult result;
+  result.rayDir = normalize(vec3(coord - vec2(0.5), 1));
+  vec3 pos = vec3(sin(time) * 3.0, 2, -10);
   for(int i = 0; i < 1000; i++){
-    vec3 normal = normalize(-pos);
-    if(length(pos) <= 3){
-      float light = dot(normalize(vec3(10, 1, -1)), normal) * 0.5 + 0.5;
-      return vec4((normal + 1) / 2 * light, 1);
+    vec3 normal = normalize(pos);
+    if(length(pos) <= 2){
+      result.normal = normal;
+      result.hit = 1;
+      break;
     }
-    pos += distance(pos, normal) * dir;
+    pos += abs(distance(pos, normal)) * result.rayDir;
   }
-  return vec4(0);
+  return result;
 } 
 
 
@@ -44,7 +52,13 @@ void main()
 {
   vec2 uv = gl_FragCoord.xy / camera.size;
   uv.y *= camera.size.y / camera.size.x;
-  FragColor = rayMarch(uv);
+  RayResult res = rayMarch(uv);
+  if(res.hit > 0){
+    vec3 color = (res.normal + 1) / 2;
+    FragColor = vec4(color, 1);
+  }else{
+    FragColor = vec4(0);
+  }
 } 
 """
 type
@@ -96,13 +110,13 @@ proc getDefaultShader*(): Gluint =
     glDeleteShader(vs.get)
     glDeleteShader(fs.get)
 
-
-proc setUniformBuff*[T](shader: Gluint, uniform: string, value: T) =
+proc setUniformBuff*[T: object](shader: Gluint, uniform: string, value: T) =
   let
     blockIndex = glGetUniformBlockIndex(shader, uniform)
     blockSize = 0.Glint
-  shader.glGetActiveUniformBlockiv(blockIndex, GlUniformBlockDataSize, blockSize.unsafeAddr)
 
+  shader.glGetActiveUniformBlockiv(blockIndex, GlUniformBlockDataSize, blockSize.unsafeAddr)
+  echo sizeOf(value), " ", blockSize
   assert sizeof(value) <= blockSize
 
   var uboHandle: GLuint
@@ -115,3 +129,11 @@ proc setUniform*(shader: Gluint, uniform: string, value: float32) =
   let loc = glGetUniformLocation(shader, uniform)
   if loc != -1:
     glUniform1f(loc, value.GlFloat)
+
+macro alignToShader*(typeDef: untyped): untyped =
+  result = typeDef
+  for identDef in result[2][2]:
+    for ind in 0 .. identDef.len - 3:
+      let field = identDef[ind]
+      identDef[ind] = quote do:
+        `field`{.align: 16.}
