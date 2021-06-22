@@ -1,7 +1,5 @@
-import opengl
-import std/[options, tables]
+import opengl, vmath
 import cameras
-export tables
 const
   vertexShader = """
 #version 330 core
@@ -24,6 +22,11 @@ layout (std140) uniform Camera
   vec2 size;
 } camera;
 
+layout (std140) uniform Light
+{
+  vec4 pos;
+} light;
+
 uniform float time;
 
 struct RayResult{
@@ -34,11 +37,11 @@ struct RayResult{
 
 RayResult rayMarch(vec2 coord){
   RayResult result;
-  result.rayDir = normalize(vec3(coord - vec2(0.5), 1));
+  result.rayDir = normalize(vec3(coord - vec2(0.5), 0.7));
   vec3 pos = camera.pos_dist.xyz;
   for(int i = 0; i < camera.pos_dist.w; i++){
     vec3 normal = normalize(pos);
-    if(length(pos) <= 2){
+    if(length(pos) <= 2.0001){
       result.normal = normal;
       result.hit = 1;
       break;
@@ -56,7 +59,9 @@ void main()
   RayResult res = rayMarch(uv);
   if(res.hit > 0){
     vec3 color = (res.normal + 1) / 2;
-    FragColor = vec4(color, 1);
+    float light = dot(res.normal, normalize(light.pos.xyz)) * 0.5 + 0.5;
+    float rim = (dot(res.normal, vec3(0, 0, 1)) * 0.5 + 0.5);
+    FragColor = vec4(color * (round(light / 0.2) * 0.2) + (rim * color), 1);
   }else{
     FragColor = vec4(0);
   }
@@ -66,6 +71,7 @@ type
   ShaderKind* = enum
     Vertex, Fragment, Compute
   Ubo* = distinct Gluint
+  Ssbo* = distinct Gluint
 
 const KindLut = [
   Vertex: GlVertexShader,
@@ -117,12 +123,22 @@ proc getUbo*(shader: Gluint, uniform: string): Ubo =
     index = glGetUniformBlockIndex(shader, uniform)
     uboHandle: Gluint = 0
   glGenBuffers(1, uboHandle.unsafeaddr)
-  glBindBuffer(GlUniformBuffer, uboHandle)
   glBindBufferbase(GlUniformBuffer, index, uboHandle)
   uboHandle.Ubo
 
+proc getSsbo*(shader: Gluint, uniform: string): Ssbo =
+  let
+    index = glGetUniformBlockIndex(shader, uniform)
+    ssboHandle: Gluint = 0
+  glGenBuffers(1, ssboHandle.unsafeaddr)
+  glBindBufferbase(GlShaderStorageBuffer, index, ssboHandle)
+  ssboHandle.Ssbo
+
 proc `cameraBuffer=`*(ubo: Ubo, cam: Camera) =
   glNamedBufferData(ubo.Gluint, sizeof(cam), cam.unsafeAddr, GlDynamicDraw)
+
+proc `light=`*(ubo: Ubo, light: Vec4) =
+  glNamedBufferData(ubo.Gluint, sizeof(light), light.unsafeAddr, GlDynamicDraw)
 
 proc setUniform*(shader: Gluint, uniform: string, value: float32) =
   let loc = glGetUniformLocation(shader, uniform)

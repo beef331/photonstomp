@@ -71,18 +71,24 @@ var app = init()
 let
   shader = getDefaultShader()
   cameraUbo = shader.getUbo("Camera")
+  lightUbo = shader.getUbo("Light")
 
 bindRect(shader)
 glUseProgram(shader)
-var time = 0f
-
+var
+  time = 0f
+  lightPos: Vec4
+camera.pos.y = 2
+lightPos.y = 3
+lightPos.x = 10
+cameraUbo.cameraBuffer = camera
 while app.isRunning:
   let startTime = getMonoTime()
   app.poll
   app.draw
   time += (getMonoTime() - startTime).inMicroseconds.float / 1_000_000f
-  camera.pos.y = sin(time) + 1
-  cameraUbo.cameraBuffer = camera
+  lightPos.z = sin(time) * 10
+  lightUbo.light = lightPos
   shader.setUniform("time", time)
 
 glDeleteContext(app.context)
