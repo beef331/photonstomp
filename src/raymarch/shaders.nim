@@ -14,18 +14,17 @@ void main()
 #version 330 core
 out vec4 FragColor;
   
-in vec4 vertexColor; // the input variable from the vertex shader (same name and same type)
+
+layout (std140) uniform Light
+{
+  vec3 pos;
+} light;
 
 layout (std140) uniform Camera
 {
   vec4 pos_dist;
   vec2 size;
 } camera;
-
-layout (std140) uniform Light
-{
-  vec4 pos;
-} light;
 
 uniform float time;
 
@@ -56,12 +55,13 @@ void main()
 {
   vec2 uv = gl_FragCoord.xy / camera.size;
   uv.y *= camera.size.y / camera.size.x;
+  vec3 lightPos = light.pos.xyz;
   RayResult res = rayMarch(uv);
   if(res.hit > 0){
     vec3 color = (res.normal + 1) / 2;
-    float light = dot(res.normal, normalize(light.pos.xyz)) * 0.5 + 0.5;
+    float lVal = dot(res.normal, normalize(lightPos)) * 0.5 + 0.5;
     float rim = (dot(res.normal, vec3(0, 0, 1)) * 0.5 + 0.5);
-    FragColor = vec4(color * (round(light / 0.2) * 0.2) + (rim * color), 1);
+    FragColor = vec4(color * (round(lVal / 0.2) * 0.2) + (rim * color), 1);
   }else{
     FragColor = vec4(0);
   }
@@ -70,8 +70,8 @@ void main()
 type
   ShaderKind* = enum
     Vertex, Fragment, Compute
-  Ubo* = distinct Gluint
-  Ssbo* = distinct Gluint
+  Ubo*[T] = distinct Gluint
+  Ssbo*[T] = distinct Gluint
 
 const KindLut = [
   Vertex: GlVertexShader,
@@ -118,27 +118,18 @@ proc getDefaultShader*(): GLuint =
   glDeleteShader(fs)
 
 
-proc getUbo*(shader: Gluint, uniform: string): Ubo =
-  let
-    index = glGetUniformBlockIndex(shader, uniform)
-    uboHandle: Gluint = 0
-  glGenBuffers(1, uboHandle.unsafeaddr)
-  glBindBufferbase(GlUniformBuffer, index, uboHandle)
-  uboHandle.Ubo
+proc getUbo*[T](shader: Gluint, uniform: string): Ubo[T] =
+  let index = glGetUniformBlockIndex(shader, uniform)
+  glGenBuffers(1, Gluint(result).unsafeaddr)
+  glBindBufferbase(GlUniformBuffer, index, Gluint(result))
 
-proc getSsbo*(shader: Gluint, uniform: string): Ssbo =
-  let
-    index = glGetUniformBlockIndex(shader, uniform)
-    ssboHandle: Gluint = 0
-  glGenBuffers(1, ssboHandle.unsafeaddr)
-  glBindBufferbase(GlShaderStorageBuffer, index, ssboHandle)
-  ssboHandle.Ssbo
+proc `value=`*[T](ubo: Ubo[T], val: T) =
+  glNamedBufferData(ubo.Gluint, sizeof(T), val.unsafeAddr, GlDynamicDraw)
 
-proc `cameraBuffer=`*(ubo: Ubo, cam: Camera) =
-  glNamedBufferData(ubo.Gluint, sizeof(cam), cam.unsafeAddr, GlDynamicDraw)
-
-proc `light=`*(ubo: Ubo, light: Vec4) =
-  glNamedBufferData(ubo.Gluint, sizeof(light), light.unsafeAddr, GlDynamicDraw)
+proc getSsbo*[T](shader: Gluint, uniform: string): Ssbo[T] =
+  let index = glGetUniformBlockIndex(shader, uniform)
+  glGenBuffers(1, Gluint(result).unsafeaddr)
+  glBindBufferbase(GlShaderStorageBuffer, index, Gluint(result))
 
 proc setUniform*(shader: Gluint, uniform: string, value: float32) =
   let loc = glGetUniformLocation(shader, uniform)

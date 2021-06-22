@@ -70,25 +70,26 @@ proc bindRect(shader: Gluint) =
 var app = init()
 let
   shader = getDefaultShader()
-  cameraUbo = shader.getUbo("Camera")
-  lightUbo = shader.getUbo("Light")
+  cameraUbo = shader.getUbo[:Camera]("Camera")
+  lightUbo = shader.getUbo[:Vec3]("Light")
 
 bindRect(shader)
 glUseProgram(shader)
 var
   time = 0f
-  lightPos: Vec4
+  lightPos: Vec3
+
 camera.pos.y = 2
-lightPos.y = 3
 lightPos.x = 10
-cameraUbo.cameraBuffer = camera
+
+cameraUbo.value = camera
+lightUbo.value = lightPos
+
 while app.isRunning:
   let startTime = getMonoTime()
   app.poll
   app.draw
   time += (getMonoTime() - startTime).inMicroseconds.float / 1_000_000f
-  lightPos.z = sin(time) * 10
-  lightUbo.light = lightPos
   shader.setUniform("time", time)
 
 glDeleteContext(app.context)
