@@ -68,16 +68,21 @@ proc bindRect(shader: Gluint) =
 
 
 var app = init()
-let shader = getDefaultShader()
+let
+  shader = getDefaultShader()
+  cameraUbo = shader.getUbo("Camera")
+
 bindRect(shader)
 glUseProgram(shader)
-shader.setUniformBuff("Camera", camera)
 var time = 0f
+
 while app.isRunning:
   let startTime = getMonoTime()
   app.poll
   app.draw
   time += (getMonoTime() - startTime).inMicroseconds.float / 1_000_000f
+  camera.pos.y = sin(time) + 1
+  cameraUbo.cameraBuffer = camera
   shader.setUniform("time", time)
 
 glDeleteContext(app.context)

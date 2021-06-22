@@ -1,5 +1,7 @@
 import opengl
-import std/[options, macros]
+import std/[options, tables]
+import cameras
+export tables
 const
   vertexShader = """
 #version 330 core
@@ -16,11 +18,10 @@ out vec4 FragColor;
   
 in vec4 vertexColor; // the input variable from the vertex shader (same name and same type)
 
-uniform Camera
+layout (std140) uniform Camera
 {
-  vec3 pos;
+  vec4 pos_dist;
   vec2 size;
-  float distance;
 } camera;
 
 uniform float time;
@@ -34,15 +35,15 @@ struct RayResult{
 RayResult rayMarch(vec2 coord){
   RayResult result;
   result.rayDir = normalize(vec3(coord - vec2(0.5), 1));
-  vec3 pos = vec3(sin(time) * 3.0, 2, -10);
-  for(int i = 0; i < 1000; i++){
+  vec3 pos = camera.pos_dist.xyz;
+  for(int i = 0; i < camera.pos_dist.w; i++){
     vec3 normal = normalize(pos);
     if(length(pos) <= 2){
       result.normal = normal;
       result.hit = 1;
       break;
     }
-    pos += abs(distance(pos, normal)) * result.rayDir;
+    pos += abs(distance(pos, normal * 2)) * result.rayDir;
   }
   return result;
 } 
@@ -64,6 +65,7 @@ void main()
 type
   ShaderKind* = enum
     Vertex, Fragment, Compute
+  Ubo* = distinct Gluint
 
 const KindLut = [
   Vertex: GlVertexShader,
@@ -72,7 +74,7 @@ const KindLut = [
 ]
 
 
-proc loadShader*(shader: string, kind: ShaderKind): Option[Gluint] =
+proc loadShader*(shader: string, kind: ShaderKind): Gluint =
   let
     shaderProg = allocCStringArray([shader])
     shaderId = glCreateShader(KindLut[kind])
@@ -86,54 +88,43 @@ proc loadShader*(shader: string, kind: ShaderKind): Option[Gluint] =
     glGetShaderInfoLog(shaderId, 512, nil, buff[0].addr)
     echo buff
     return
-  result = some(shaderId)
+  result = shaderId
 
   shaderProg.deallocCStringArray
 
-proc getDefaultShader*(): Gluint =
+proc getDefaultShader*(): GLuint =
   let
     vs = loadShader(vertexShader, Vertex)
     fs = loadShader(fragShader, Fragment)
-  if vs.isSome and fs.isSome:
-    result = glCreateProgram()
-    glAttachShader(result, vs.get)
-    glAttachShader(result, fs.get)
-    glLinkProgram(result)
+  result = glCreateProgram()
+  glAttachShader(result, vs)
+  glAttachShader(result, fs)
+  glLinkProgram(result)
 
-    var success = 1.Glint
+  var success = 1.Glint
 
-    glGetProgramIv(result, GlLinkStatus, success.addr)
-    if success == 0:
-      var msg = newString(512)
-      glGetProgramInfoLog(result, 512, nil, msg[0].addr)
-      echo msg
-    glDeleteShader(vs.get)
-    glDeleteShader(fs.get)
+  glGetProgramIv(result, GlLinkStatus, success.addr)
+  if success == 0:
+    var msg = newString(512)
+    glGetProgramInfoLog(result, 512, nil, msg[0].addr)
+    echo msg
+  glDeleteShader(vs)
+  glDeleteShader(fs)
 
-proc setUniformBuff*[T: object](shader: Gluint, uniform: string, value: T) =
+
+proc getUbo*(shader: Gluint, uniform: string): Ubo =
   let
-    blockIndex = glGetUniformBlockIndex(shader, uniform)
-    blockSize = 0.Glint
-
-  shader.glGetActiveUniformBlockiv(blockIndex, GlUniformBlockDataSize, blockSize.unsafeAddr)
-  echo sizeOf(value), " ", blockSize
-  assert sizeof(value) <= blockSize
-
-  var uboHandle: GLuint
-  glGenBuffers(1, uboHandle.addr)
+    index = glGetUniformBlockIndex(shader, uniform)
+    uboHandle: Gluint = 0
+  glGenBuffers(1, uboHandle.unsafeaddr)
   glBindBuffer(GlUniformBuffer, uboHandle)
-  glBufferData(GlUniformBuffer, blockSize, value.unsafeAddr, GlDynamicDraw)
-  glBindBufferBase(GlUniformBuffer, blockIndex, uboHandle)
+  glBindBufferbase(GlUniformBuffer, index, uboHandle)
+  uboHandle.Ubo
+
+proc `cameraBuffer=`*(ubo: Ubo, cam: Camera) =
+  glNamedBufferData(ubo.Gluint, sizeof(cam), cam.unsafeAddr, GlDynamicDraw)
 
 proc setUniform*(shader: Gluint, uniform: string, value: float32) =
   let loc = glGetUniformLocation(shader, uniform)
   if loc != -1:
     glUniform1f(loc, value.GlFloat)
-
-macro alignToShader*(typeDef: untyped): untyped =
-  result = typeDef
-  for identDef in result[2][2]:
-    for ind in 0 .. identDef.len - 3:
-      let field = identDef[ind]
-      identDef[ind] = quote do:
-        `field`{.align: 16.}
