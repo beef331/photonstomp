@@ -11,8 +11,9 @@ type App = object
   isRunning: bool
   rect: Gluint
 
-var camera = Camera(size: vec4(1280, 720, 0, 0), pos: vec3(0, 10, 0), distance: 1000f)
-camera.matrix = lookAt(camera.pos, vec3(0, 0, 0), vec3(0, 1, 0))
+var camera = Camera(size: vec4(1280, 720, 0, 0), distance: 1000f)
+camera.pos = vec3(ChunkEdgeSize / 2, 20, ChunkEdgeSize / 2)
+camera.matrix = lookAt(camera.pos, vec3(ChunkEdgeSize / 2), vec3(0, 1, 0))
 proc init: App =
   if init(INIT_VIDEO) == 0:
     result.isRunning = true
@@ -92,11 +93,10 @@ for blck in chunkData.mitems:
   let
     x = i mod ChunkEdgeSize
     y = i div (ChunkEdgeSize * ChunkEdgeSize)
-    z = i mod (ChunkEdgeSize * ChunkEdgeSize)
+    z = i div ChunkEdgeSize
   if y == 0:
     blck = dirt
-  if x == ChunkEdgeSize div 2 and z == ChunkEdgeSize div 2:
-    blck = dirt
+
   inc i
 
 let
@@ -114,6 +114,12 @@ while app.isRunning:
   app.poll
   app.draw
   time += (getMonoTime() - startTime).inMicroseconds.float / 1_000_000f
+
+  camera.pos.y = 20 + sin(time) * 10
+  camera.matrix = lookAt(camera.pos, vec3(ChunkEdgeSize / 2), vec3(0, 0, -1))
+
+  cameraUbo.copyToBuffer camera
+
   shader.setUniform("time", time)
 
 glDeleteContext(app.context)

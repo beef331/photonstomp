@@ -13,7 +13,7 @@ void main()
 """
   fragShader = """
 #version 430
-out vec4 FragColor;
+out vec4 fragColor;
 
 
 layout (std140, binding = 1) uniform Camera
@@ -62,37 +62,36 @@ RayResult rayMarchSphere(vec2 coord){
 
 RayResult rayMarch(vec2 coord){
   RayResult result;
-  result.rayDir = normalize((camera.matrix * vec4(coord - vec2(0.5), 1, 1)).xyz);
+  result.rayDir = normalize(mat3(camera.matrix) * vec3(coord, 1));
   vec3 pos = camera.pos_dist.xyz;
   for(int i = 0; i < camera.pos_dist.w; i++){
-    vec3 floored = floor(pos);
-    if(floored.x >= 0 && floored.x <= chunkSize &&
-      floored.y >= 0 && floored.y <= chunkSize &&
-      floored.z >= 0 && floored.z <= chunkSize){
-
-      int index = int(floored.x + floored.z * chunkSize + floored.y * chunkSize * chunkSize);
-      int blockId = int(ids[index / 2] >> int(mod(index, 2) * 16));
+    ivec3 floored = ivec3(floor(pos));
+    if(floored.x >= 0 && floored.x < chunkSize &&
+      floored.y >= 0 && floored.y < chunkSize &&
+      floored.z >= 0 && floored.z < chunkSize){
+      int index = floored.x + (floored.z * chunkSize) + (floored.y * chunkSize * chunkSize);
+      int blockId = ids[index / chunkSize] >> (index % 2 * 16);
       if(blockId > 0){
         result.hit = blockId;
         break;
       }
     }
-    float offset = length(vec3(1) - fract(pos));
-    pos += normalize(result.rayDir) * offset;
+    float offset = 0.1; // length(vec3(1) - fract(pos)) +
+    pos += result.rayDir * offset;
   }
   return result;
 } 
 
 void main()
 {
-  vec2 uv = gl_FragCoord.xy / camera.size.xy;
-  uv.y *= camera.size.y / camera.size.x;
+  vec2 uv = vec2(gl_FragCoord.xy - 0.5 * camera.size.xy) / camera.size.y;
   vec3 lightPos = light.pos.xyz;
+
   RayResult res = rayMarch(uv);
   if(res.hit > 0){
-    FragColor = vec4(1);
+    fragColor = vec4(1);
   }else{
-    FragColor = vec4(0);
+    fragColor = vec4(0);
   }
 } 
 """
