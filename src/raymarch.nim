@@ -1,5 +1,5 @@
 import sdl2/sdl, opengl, vmath
-import raymarch/[shaders, cameras]
+import raymarch/[shaders, cameras, blocks]
 import std/[monotimes, times]
 
 const
@@ -11,13 +11,13 @@ type App = object
   isRunning: bool
   rect: Gluint
 
-var camera = Camera(size: vec2(1280, 720), pos: vec3(0, 0, -10), distance: 100f)
-
+var camera = Camera(size: vec4(1280, 720, 0, 0), pos: vec3(0, 10, 0), distance: 1000f)
+camera.matrix = lookAt(camera.pos, vec3(0, 0, 0), vec3(0, 1, 0))
 proc init: App =
   if init(INIT_VIDEO) == 0:
     result.isRunning = true
     discard glSetAttribute(GL_CONTEXT_MAJOR_VERSION, 4)
-    discard glSetAttribute(GL_CONTEXT_MINOR_VERSION, 0)
+    discard glSetAttribute(GL_CONTEXT_MINOR_VERSION, 3)
 
     result.window = createWindow("Test", WindowPosUndefined, WindowPosUndefined, camera.size.x.int,
         camera.size.y.int, WindowFlags)
@@ -64,27 +64,51 @@ proc bindRect(shader: Gluint) =
   glVertexAttribPointer(posAttrib, 2.GlInt, cGlFloat, GlFalse, 0.GlInt, nil)
   glEnableVertexAttribArray(posAttrib);
 
-
+proc openGlDebug(source: GLenum,
+    typ: GLenum,
+    id: GLuint,
+    severity: GLenum,
+    length: GLsizei,
+    message: ptr GLchar,
+    userParam: pointer) {.stdcall.} =
+  var str = newString(length)
+  copyMem(str[0].addr, message, length)
+  echo str
 
 
 var app = init()
-let
-  shader = getDefaultShader()
-  cameraUbo = shader.getUbo[:Camera]("Camera")
-  lightUbo = shader.getUbo[:Vec3]("Light")
+let shader = getDefaultShader()
 
 bindRect(shader)
 glUseProgram(shader)
+glEnable(GlDebugOutput)
+glDebugMessageCallback(openGlDebug, nil)
 var
   time = 0f
-  lightPos: Vec3
+  lightPos = vec3(10, 0, 0)
+  chunkData: Chunk
+var i = 0
+for blck in chunkData.mitems:
+  let
+    x = i mod ChunkEdgeSize
+    y = i div (ChunkEdgeSize * ChunkEdgeSize)
+    z = i mod (ChunkEdgeSize * ChunkEdgeSize)
+  if y == 0:
+    blck = dirt
+  if x == ChunkEdgeSize div 2 and z == ChunkEdgeSize div 2:
+    blck = dirt
+  inc i
 
-camera.pos.y = 2
-lightPos.x = 10
+let
+  cameraUbo = shader.genUbo[:Camera]("Camera")
+  lightUbo = shader.genUbo[:Vec3]("Light")
+  blockSsbo = shader.genSsbo[:Chunk](3)
 
-cameraUbo.value = camera
-lightUbo.value = lightPos
+cameraUbo.copyToBuffer camera
+lightUbo.copyToBuffer lightPos
+blockSsbo.copyToBuffer chunkData
 
+shader.setUniform("chunkSize", ChunkEdgeSize)
 while app.isRunning:
   let startTime = getMonoTime()
   app.poll
@@ -94,3 +118,4 @@ while app.isRunning:
 
 glDeleteContext(app.context)
 app.window.destroyWindow
+

@@ -1,11 +1,16 @@
 import vmath
 const
   MaxLightStrength = 16
-  ChunkEdgeSize* = 128
+  ChunkEdgeSize* = 4i32
   ChunkSize = ChunkEdgeSize * ChunkEdgeSize * ChunkEdgeSize
 
 type
-  Block* = uint16
+  Block* {.size: 2.} = enum
+    air
+    dirt
+    stone
+    tree
+
   LightBlock* = object
     r* {.bitSize(4).}: 0u8..16u8
     g* {.bitSize(4).}: 0u8..16u8
