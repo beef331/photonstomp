@@ -153,12 +153,12 @@ proc genUbo*[T](shader: Gluint, uniform: string): Ubo[T] =
   glBindBuffer(GlUniformBuffer, result.Gluint)
   glBindBufferbase(GlUniformBuffer, index, result.Gluint)
 
-proc copyToBuffer*[T](ubo: Ubo[T], val: T) =
+proc copyTo*[T](val: T, ubo: Ubo[T]) =
   glBindBuffer(GlUniformBuffer, ubo.GLuint)
   glNamedBufferData(ubo.Gluint, sizeof(T), val.unsafeAddr, GlDynamicDraw)
   glBindBuffer(GlUniformBuffer, 0.Gluint)
 
-proc copyToBuffer*[T](ssbo: Ssbo[T], val: T) =
+proc copyTo*[T](val: T, ssbo: Ssbo[T]) =
   glBindBuffer(GlShaderStorageBuffer, ssbo.GLuint)
   glBufferData(GlShaderStorageBuffer, sizeof(T).GLsizeiptr, val.unsafeAddr, GlDynamicDraw)
   glBindBuffer(GlShaderStorageBuffer, 0.Gluint)

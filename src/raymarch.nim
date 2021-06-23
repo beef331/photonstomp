@@ -96,6 +96,8 @@ for blck in chunkData.mitems:
     z = i div ChunkEdgeSize
   if y == 0:
     blck = dirt
+  if i mod 3 == 0:
+    blck = air
 
   inc i
 
@@ -104,9 +106,9 @@ let
   lightUbo = shader.genUbo[:Vec3]("Light")
   blockSsbo = shader.genSsbo[:Chunk](3)
 
-cameraUbo.copyToBuffer camera
-lightUbo.copyToBuffer lightPos
-blockSsbo.copyToBuffer chunkData
+camera.copyTo cameraUbo
+lightPos.copyTo lightUbo
+chunkData.copyTo blockSsbo
 
 shader.setUniform("chunkSize", ChunkEdgeSize)
 while app.isRunning:
@@ -118,7 +120,7 @@ while app.isRunning:
   camera.pos.y = 20 + sin(time) * 10
   camera.matrix = lookAt(camera.pos, vec3(ChunkEdgeSize / 2), vec3(0, 0, -1))
 
-  cameraUbo.copyToBuffer camera
+  camera.copyTo cameraUbo
 
   shader.setUniform("time", time)
 
