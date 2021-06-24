@@ -2,14 +2,15 @@ import vmath
 const
   MaxLightStrength = 16
   ChunkEdgeSize* = 8i32
-  ChunkSize = ChunkEdgeSize * ChunkEdgeSize * ChunkEdgeSize
+  ChunkSize* = ChunkEdgeSize * ChunkEdgeSize * ChunkEdgeSize
 
 type
-  Block* {.size: 2.} = enum
+  Block* {.size: sizeof(int16).} = enum
     air
     dirt
     stone
     tree
+  Chunk* = array[ChunkSize, Block]
 
   LightBlock* = object
     r* {.bitSize(4).}: 0u8..16u8
@@ -20,5 +21,5 @@ type
     pos: Vec3
     colour: LightBlock
     strength: 0..MaxLightStrength
-  Chunk* = array[ChunkSize, Block]
+
   LightData* = array[ChunkSize, LightBlock]

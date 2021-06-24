@@ -28,7 +28,7 @@ layout (std140, binding = 2) uniform Light
   vec3 pos;
 } light;
 
-layout (std140, binding = 3) buffer blockData
+layout (std430, binding = 3) buffer blockData
 {
   int ids[];
 };
@@ -65,18 +65,18 @@ RayResult rayMarch(vec2 coord){
   result.rayDir = normalize(mat3(camera.matrix) * vec3(coord, 1));
   vec3 pos = camera.pos_dist.xyz;
   for(int i = 0; i < camera.pos_dist.w; i++){
-    ivec3 floored = ivec3(floor(pos));
-    if(floored.x >= 0 && floored.x < chunkSize &&
-      floored.y >= 0 && floored.y < chunkSize &&
-      floored.z >= 0 && floored.z < chunkSize){
+    if(pos.x >= 0 && pos.x < chunkSize &&
+      pos.y >= 0 && pos.y < chunkSize &&
+      pos.z >= 0 && pos.z < chunkSize){
+      ivec3 floored = ivec3(pos);
       int index = floored.x + (floored.z * chunkSize) + (floored.y * chunkSize * chunkSize);
-      int blockId = ids[index / chunkSize] >> (index % 2 * 16);
+      int blockId = (ids[index / 2] >> (index % 2 * 0x10)) & 0xffff; // int32 -> int16
       if(blockId > 0){
         result.hit = blockId;
         break;
       }
     }
-    float offset = 0.1; // length(vec3(1) - fract(pos)) +
+    float offset = 0.1; // Todo: Some proper cube math to get minimal distance
     pos += result.rayDir * offset;
   }
   return result;
@@ -88,9 +88,12 @@ void main()
   vec3 lightPos = light.pos.xyz;
 
   RayResult res = rayMarch(uv);
-  if(res.hit > 0){
-    fragColor = vec4(1);
-  }else{
+  if(res.hit == 1){
+    fragColor = vec4(0.4, 0.2, 0, 1);
+  }else if(res.hit == 2){
+    fragColor = vec4(0.1);
+  }
+  else{
     fragColor = vec4(0);
   }
 } 
@@ -158,14 +161,15 @@ proc copyTo*[T](val: T, ubo: Ubo[T]) =
   glNamedBufferData(ubo.Gluint, sizeof(T), val.unsafeAddr, GlDynamicDraw)
   glBindBuffer(GlUniformBuffer, 0.Gluint)
 
+proc genSsbo*[T](shader: Gluint, binding: Gluint): Ssbo[T] =
+  glCreateBuffers(1, result.Gluint.addr)
+  glBindBufferbase(GlShaderStorageBuffer, binding, result.Gluint)
+
 proc copyTo*[T](val: T, ssbo: Ssbo[T]) =
   glBindBuffer(GlShaderStorageBuffer, ssbo.GLuint)
   glBufferData(GlShaderStorageBuffer, sizeof(T).GLsizeiptr, val.unsafeAddr, GlDynamicDraw)
   glBindBuffer(GlShaderStorageBuffer, 0.Gluint)
 
-proc genSsbo*[T](shader: Gluint, binding: Gluint): Ssbo[T] =
-  glCreateBuffers(1, result.Gluint.addr)
-  glBindBufferbase(GlShaderStorageBuffer, binding, result.Gluint)
 
 proc setUniform*(shader: Gluint, uniform: string, value: float32) =
   let loc = glGetUniformLocation(shader, uniform)

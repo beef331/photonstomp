@@ -13,7 +13,7 @@ type App = object
 
 var camera = Camera(size: vec4(1280, 720, 0, 0), distance: 1000f)
 camera.pos = vec3(ChunkEdgeSize / 2, 20, ChunkEdgeSize / 2)
-camera.matrix = lookAt(camera.pos, vec3(ChunkEdgeSize / 2), vec3(0, 1, 0))
+camera.matrix = lookAt(camera.pos, vec3(ChunkEdgeSize / 2), vec3(0, 0, -1))
 proc init: App =
   if init(INIT_VIDEO) == 0:
     result.isRunning = true
@@ -88,18 +88,6 @@ var
   time = 0f
   lightPos = vec3(10, 0, 0)
   chunkData: Chunk
-var i = 0
-for blck in chunkData.mitems:
-  let
-    x = i mod ChunkEdgeSize
-    y = i div (ChunkEdgeSize * ChunkEdgeSize)
-    z = i div ChunkEdgeSize
-  if y == 0:
-    blck = dirt
-  if i mod 3 == 0:
-    blck = air
-
-  inc i
 
 let
   cameraUbo = shader.genUbo[:Camera]("Camera")
@@ -111,16 +99,23 @@ lightPos.copyTo lightUbo
 chunkData.copyTo blockSsbo
 
 shader.setUniform("chunkSize", ChunkEdgeSize)
+
+var
+  lastStep = 0f
+  id = 0i32
 while app.isRunning:
   let startTime = getMonoTime()
   app.poll
   app.draw
   time += (getMonoTime() - startTime).inMicroseconds.float / 1_000_000f
 
-  camera.pos.y = 20 + sin(time) * 10
-  camera.matrix = lookAt(camera.pos, vec3(ChunkEdgeSize / 2), vec3(0, 0, -1))
+  if time - lastStep >= 0.04:
+    lastStep = time
+    chunkData[id] = air
+    id = (id + 1 + ChunkSize) mod ChunkSize
 
-  camera.copyTo cameraUbo
+    chunkData[id] = stone
+    chunkData.copyTo blockSsbo
 
   shader.setUniform("time", time)
 
