@@ -12,7 +12,7 @@ type App = object
   rect: Gluint
 
 var camera = Camera(size: vec4(1280, 720, 0, 0), distance: 1000f)
-camera.pos = vec3(ChunkEdgeSize / 2, 20, ChunkEdgeSize / 2)
+camera.pos = vec3(ChunkEdgeSize / 2, 20, ChunkEdgeSize / 2 + 1)
 camera.matrix = lookAt(camera.pos, vec3(ChunkEdgeSize / 2), vec3(0, 0, -1))
 proc init: App =
   if init(INIT_VIDEO) == 0:
@@ -86,12 +86,24 @@ glEnable(GlDebugOutput)
 glDebugMessageCallback(openGlDebug, nil)
 var
   time = 0f
-  lightPos = vec3(10, 0, 0)
+  lightPos = vec3(10, 1, 0)
   chunkData: Chunk
 
+var i = 0
+for blk in chunkData.mitems:
+  let
+    x = i mod ChunkEdgeSize
+    y = i div (ChunkEdgeSize * ChunkEdgeSize)
+    z = i mod (ChunkEdgeSize * ChunkEdgeSize) div ChunkEdgeSize
+  if y == 0:
+    blk = dirt
+  if x == z:
+    blk = stone
+  inc i
+
 let
-  cameraUbo = shader.genUbo[:Camera]("Camera")
-  lightUbo = shader.genUbo[:Vec3]("Light")
+  cameraUbo = shader.genUbo[:Camera, "Camera"]()
+  lightUbo = shader.genUbo[:Vec3, "Light"]()
   blockSsbo = shader.genSsbo[:Chunk](3)
 
 camera.copyTo cameraUbo
@@ -100,22 +112,11 @@ chunkData.copyTo blockSsbo
 
 shader.setUniform("chunkSize", ChunkEdgeSize)
 
-var
-  lastStep = 0f
-  id = 0i32
 while app.isRunning:
   let startTime = getMonoTime()
   app.poll
   app.draw
   time += (getMonoTime() - startTime).inMicroseconds.float / 1_000_000f
-
-  if time - lastStep >= 0.04:
-    lastStep = time
-    chunkData[id] = air
-    id = (id + 1 + ChunkSize) mod ChunkSize
-
-    chunkData[id] = stone
-    chunkData.copyTo blockSsbo
 
   shader.setUniform("time", time)
 

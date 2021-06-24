@@ -1,6 +1,5 @@
-import opengl, vmath
-import cameras
-import std/typetraits
+import opengl
+import std/[typetraits, tables]
 const
   vertexShader = """
 #version 430
@@ -41,42 +40,52 @@ struct RayResult{
   vec3 normal;
   vec3 rayDir;
 };
-/*
-RayResult rayMarchSphere(vec2 coord){
-  RayResult result;
-  result.rayDir = (camera.matrix * vec4(normalize(vec3(coord - vec2(0.5), 1)), 1)).xyz;
-  vec3 pos = camera.pos_dist.xyz;
-  for(int i = 0; i < camera.pos_dist.w; i++){
-    vec3 normal = normalize(pos);
-    float offset = abs(distance(pos, normal * chunkSize));
-    if(length(pos + offset * result.rayDir) <= chunkSize){
-      result.normal = normal;
-      result.hit = 1;
-      break;
-    }
-    pos += offset * result.rayDir;
-  }
-  return result;
+
+struct AabbResult{
+  float tMin;
+  float tMax;
+};
+
+vec2 boxIntersection( in vec3 ro, in vec3 rd, out vec3 oN ) 
+{
+    vec3 m = 1.0/rd;
+    vec3 n = m*ro;
+    vec3 k = abs(m);
+    vec3 t1 = -n - k;
+    vec3 t2 = -n + k;
+
+    float tN = max( max( t1.x, t1.y), t1.z);
+    float tF = min( min( t2.x, t2.y), t2.z);
+	
+    if( tN>tF || tF<0.0) return vec2(-1.0); // no intersection
+    
+    oN = -sign(rd)*step(t1.yzx,t1.xyz)*step(t1.zxy,t1.xyz);
+
+    return vec2( tN, tF );
 }
-*/
 
 RayResult rayMarch(vec2 coord){
   RayResult result;
   result.rayDir = normalize(mat3(camera.matrix) * vec3(coord, 1));
   vec3 pos = camera.pos_dist.xyz;
   for(int i = 0; i < camera.pos_dist.w; i++){
+    float offset = 0.075;
     if(pos.x >= 0 && pos.x < chunkSize &&
       pos.y >= 0 && pos.y < chunkSize &&
       pos.z >= 0 && pos.z < chunkSize){
+    
       ivec3 floored = ivec3(pos);
       int index = floored.x + (floored.z * chunkSize) + (floored.y * chunkSize * chunkSize);
       int blockId = (ids[index / 2] >> (index % 2 * 0x10)) & 0xffff; // int32 -> int16
+      vec3 hit;
+      vec2 dists = boxIntersection(camera.pos_dist.xyz - floored, result.rayDir, hit);
+      result.normal = hit;
       if(blockId > 0){
         result.hit = blockId;
         break;
       }
+
     }
-    float offset = 0.1; // Todo: Some proper cube math to get minimal distance
     pos += result.rayDir * offset;
   }
   return result;
@@ -88,10 +97,10 @@ void main()
   vec3 lightPos = light.pos.xyz;
 
   RayResult res = rayMarch(uv);
-  if(res.hit == 1){
-    fragColor = vec4(0.4, 0.2, 0, 1);
-  }else if(res.hit == 2){
-    fragColor = vec4(0.1);
+  if(res.hit > 0){
+    vec3 col = vec3(1);
+    float light = dot(res.normal, normalize(lightPos)) * 0.5 + 0.5;
+    fragColor = vec4(col * light, 1);
   }
   else{
     fragColor = vec4(0);
@@ -150,11 +159,15 @@ proc getDefaultShader*(): GLuint =
   glDeleteShader(fs)
 
 
-proc genUbo*[T](shader: Gluint, uniform: string): Ubo[T] =
-  let index = glGetUniformBlockIndex(shader, uniform)
+const UboTable = {
+  "Camera": 1.Gluint,
+  "Light": 2.Gluint
+  }.toTable
+
+proc genUbo*[T; U: static[string]](shader: Gluint): Ubo[T] =
   glGenBuffers(1, result.Gluint.addr)
   glBindBuffer(GlUniformBuffer, result.Gluint)
-  glBindBufferbase(GlUniformBuffer, index, result.Gluint)
+  glBindBufferbase(GlUniformBuffer, UboTable[U], result.Gluint) # Apparently no way to go name -> Ubo bind location
 
 proc copyTo*[T](val: T, ubo: Ubo[T]) =
   glBindBuffer(GlUniformBuffer, ubo.GLuint)
