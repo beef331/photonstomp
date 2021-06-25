@@ -12,8 +12,9 @@ type App = object
   rect: Gluint
 
 var camera = Camera(size: vec4(1280, 720, 0, 0), distance: 1000f)
-camera.pos = vec3(ChunkEdgeSize / 2, 20, ChunkEdgeSize / 2 + 1)
-camera.matrix = lookAt(camera.pos, vec3(ChunkEdgeSize / 2), vec3(0, 0, -1))
+camera.pos = vec3(ChunkEdgeSize.float + 2, 5, ChunkEdgeSize / 2)
+camera.matrix = rotateY(90f.toRadians) * rotateX(-45f.toRadians)
+
 proc init: App =
   if init(INIT_VIDEO) == 0:
     result.isRunning = true
@@ -26,11 +27,13 @@ proc init: App =
     loadExtensions()
     glClearColor(0.0, 0.0, 0.0, 1)
 
+
+var mouseY = 0
+
 proc poll(app: var App) =
   var e: Event
-
+  mouseY = 0
   while pollEvent(addr(e)) != 0:
-
     # Quit requested
     if e.kind == Quit:
       app.isRunning = false
@@ -38,6 +41,8 @@ proc poll(app: var App) =
     elif e.kind == KeyDown:
       if e.key.keysym.sym == K_Escape:
         app.isRunning = false
+    elif e.kind == MouseWheel:
+      mouseY = e.wheel.y
 
 proc draw(app: var App) =
   glClear(GL_ColorBufferBit)
@@ -97,8 +102,8 @@ for blk in chunkData.mitems:
     z = i mod (ChunkEdgeSize * ChunkEdgeSize) div ChunkEdgeSize
   if y == 0:
     blk = dirt
-  if x == z:
-    blk = stone
+  #if x == z:
+  #  blk = stone
   inc i
 
 let
@@ -112,13 +117,21 @@ chunkData.copyTo blockSsbo
 
 shader.setUniform("chunkSize", ChunkEdgeSize)
 
+var epsilon = 0f32
+
 while app.isRunning:
   let startTime = getMonoTime()
   app.poll
   app.draw
-  time += (getMonoTime() - startTime).inMicroseconds.float / 1_000_000f
+  let dt = (getMonoTime() - startTime).inMicroseconds.float / 1_000_000f
+  time += dt
+  epsilon += dt * mouseY.float * 5
+
+  lightPos.x = sin(time) * 10
+  lightPos.copyTo lightUbo
 
   shader.setUniform("time", time)
+  shader.setUniform("epsilon", epsilon)
 
 glDeleteContext(app.context)
 app.window.destroyWindow

@@ -33,33 +33,30 @@ layout (std430, binding = 3) buffer blockData
 };
 
 uniform float time;
+uniform float epsilon;
+
 uniform int chunkSize;
 
 struct RayResult{
   int hit;
   vec3 normal;
   vec3 rayDir;
+  vec3 pos;
 };
 
-struct AabbResult{
-  float tMin;
-  float tMax;
-};
 
 vec2 boxIntersection( in vec3 ro, in vec3 rd, out vec3 oN ) 
 {
-    vec3 m = 1.0/rd;
-    vec3 n = m*ro;
+    vec3 m = 1.0 / rd;
+    vec3 n = m * ro;
     vec3 k = abs(m);
     vec3 t1 = -n - k;
     vec3 t2 = -n + k;
 
     float tN = max( max( t1.x, t1.y), t1.z);
     float tF = min( min( t2.x, t2.y), t2.z);
-	
-    if( tN>tF || tF<0.0) return vec2(-1.0); // no intersection
-    
-    oN = -sign(rd)*step(t1.yzx,t1.xyz)*step(t1.zxy,t1.xyz);
+
+    oN = -sign(rd) * step(t1.yzx,t1.xyz) * step(t1.zxy,t1.xyz);
 
     return vec2( tN, tF );
 }
@@ -67,26 +64,30 @@ vec2 boxIntersection( in vec3 ro, in vec3 rd, out vec3 oN )
 RayResult rayMarch(vec2 coord){
   RayResult result;
   result.rayDir = normalize(mat3(camera.matrix) * vec3(coord, 1));
-  vec3 pos = camera.pos_dist.xyz;
+  float total = 0;
   for(int i = 0; i < camera.pos_dist.w; i++){
-    float offset = 0.075;
-    if(pos.x >= 0 && pos.x < chunkSize &&
-      pos.y >= 0 && pos.y < chunkSize &&
-      pos.z >= 0 && pos.z < chunkSize){
-    
-      ivec3 floored = ivec3(pos);
+    vec3 pos = camera.pos_dist.xyz + total * result.rayDir;
+
+    ivec3 floored = ivec3(pos);
+    vec3 norm;
+    vec2 hitDists = boxIntersection(camera.pos_dist.xyz - floored, result.rayDir, norm);
+    total = hitDists.y + 0.00001;
+    vec3 frontFace = (camera.pos_dist.xyz + (hitDists.x * 1.01) * result.rayDir);
+    floored = ivec3(frontFace);
+
+    if(frontFace.x >= 0 && frontFace.x < chunkSize &&
+      frontFace.y >= 0 && frontFace.y < chunkSize &&
+      frontFace.z >= 0 && frontFace.z < chunkSize){
+
       int index = floored.x + (floored.z * chunkSize) + (floored.y * chunkSize * chunkSize);
       int blockId = (ids[index / 2] >> (index % 2 * 0x10)) & 0xffff; // int32 -> int16
-      vec3 hit;
-      vec2 dists = boxIntersection(camera.pos_dist.xyz - floored, result.rayDir, hit);
-      result.normal = hit;
       if(blockId > 0){
         result.hit = blockId;
+        result.normal = norm;
+        result.pos = frontFace;
         break;
       }
-
     }
-    pos += result.rayDir * offset;
   }
   return result;
 } 
@@ -101,6 +102,7 @@ void main()
     vec3 col = vec3(1);
     float light = dot(res.normal, normalize(lightPos)) * 0.5 + 0.5;
     fragColor = vec4(col * light, 1);
+    fragColor = vec4((res.normal * 0.5 + 0.5), 1);
   }
   else{
     fragColor = vec4(0);
