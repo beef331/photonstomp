@@ -1,5 +1,6 @@
-import opengl
-import std/[typetraits, tables]
+import opengl, vmath
+import std/[tables]
+import textures
 const
   vertexShader = """
 #version 430
@@ -7,7 +8,7 @@ layout (location = 0) in vec3 aPos;
   
 void main()
 {
-    gl_Position = vec4(aPos, 1.0); // see how we directly give a vec3 to vec4's constructor
+    gl_Position = vec4(aPos, 1.0); // see how  directly give a vec3 to vec4's constructor
 }
 """
   fragShader = """
@@ -37,9 +38,13 @@ uniform float epsilon;
 
 uniform int chunkSize;
 
+uniform sampler2D tilemap;
+uniform vec4 tileinfo; // x = texelSize, y = tile count in axis, z = tile size
+
 struct RayResult{
   int hit;
   vec3 normal;
+  vec2 uv;
   vec3 pos;
 };
 
@@ -67,20 +72,23 @@ RayResult rayMarch(vec2 coord){
   float total = 0;
   for(int i = 0; i < camera.pos_dist.w; i++){
     if(tmax.x < tmax.y && tmax.x < tmax.z){
-      total = tmax.x;
+      result.pos = camera.pos_dist.xyz + (tmax.x + 0.01) * ray;
+      result.uv = fract(result.pos.zy);
       result.normal = vec3(float(-step.x), 0.0, 0.0);
 
       pos.x += step.x;
       tmax.x += delta.x;
     }
     else if(tmax.y < tmax.z){
-      total = tmax.y;
+      result.pos = camera.pos_dist.xyz + (tmax.y + 0.01) * ray;
+      result.uv = fract(result.pos.xz);
       result.normal = vec3(0.0, float(-step.y), 0.0);
 
       pos.y += step.y;
       tmax.y += delta.y;
     }else{
-      total = tmax.z;
+      result.pos = camera.pos_dist.xyz + (tmax.z + 0.01) * ray;
+      result.uv = fract(result.pos.xy);
       result.normal = vec3(0.0, 0.0, float(-step.z));
 
       pos.z += step.z;
@@ -109,12 +117,13 @@ void main()
 
   RayResult res = rayMarch(uv);
   if(res.hit > 0){
-    vec3 col = vec3(1);
-    //fragColor = vec4(col, 1);
     float light = dot(res.normal, normalize(lightPos)) * 0.5 + 0.5;
-    fragColor = vec4(col * light, 1);
-    //fragColor = vec4((res.normal * 0.5 + 0.5), 1);
-    //fragColor = vec4(res.pos / vec3(chunkSize), 1);
+    int hit = res.hit - 1; //Air doesnt have a texture
+    float spriteTexel = tileinfo.x * tileinfo.z;
+    vec2 uv = vec2(hit % int(tileinfo.y), (hit / int(tileinfo.y))) * spriteTexel + res.uv * spriteTexel;
+    vec4 col = texture(tilemap, uv);
+    fragColor = vec4(col.rgb * light, 1);
+
   }
   else{
     fragColor = vec4(0);
@@ -207,3 +216,19 @@ proc setUniform*(shader: Gluint, uniform: string, value: int32) =
   let loc = glGetUniformLocation(shader, uniform)
   if loc != -1:
     glUniform1i(loc, value.Glint)
+
+proc setUniform*(shader: Gluint, uniform: string, value: Vec4) =
+  let loc = glGetUniformLocation(shader, uniform)
+  if loc != -1:
+    glUniform4f(loc, value.x, value.y, value.z, value.w)
+
+proc setUniform*(shader: Gluint, uniform: string, tex: Texture) =
+  let loc = glGetUniformLocation(shader, uniform)
+  if loc != -1:
+    let textureUnit = 0.Gluint;
+    glBindTextureUnit(texture_unit, tex.GLuint);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+    glUniform1i(loc, textureUnit.Glint)

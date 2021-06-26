@@ -1,5 +1,5 @@
-import sdl2/sdl, opengl, vmath
-import raymarch/[shaders, cameras, blocks]
+import sdl2/sdl, opengl, vmath, pixie
+import raymarch/[shaders, cameras, blocks, textures]
 import std/[monotimes, times]
 
 const
@@ -12,7 +12,7 @@ type App = object
   rect: Gluint
 
 var camera = Camera(size: vec4(1280, 720, 0, 0), distance: 1000f)
-camera.pos = vec3(ChunkEdgeSize.float, 15, ChunkEdgeSize / 2 - 10)
+camera.pos = vec3(ChunkEdgeSize.float + 4, 15, ChunkEdgeSize / 2 - 10)
 camera.matrix = rotateY(45f.toRadians) * rotateX(-45f.toRadians)
 
 proc init: App =
@@ -110,12 +110,17 @@ let
   cameraUbo = shader.genUbo[:Camera, "Camera"]()
   lightUbo = shader.genUbo[:Vec3, "Light"]()
   blockSsbo = shader.genSsbo[:Chunk](3)
+  texId = genTexture()
+  tileMap = readImage("./assets/tilesheet.png")
 
+tileMap.copyTo texId
 camera.copyTo cameraUbo
 lightPos.copyTo lightUbo
 chunkData.copyTo blockSsbo
 
 shader.setUniform("chunkSize", ChunkEdgeSize)
+shader.setUniform("tilemap", texId)
+shader.setUniform("tileinfo", vec4(1f / tilemap.width.float, 20f, 8f, 0f))
 
 var
   lastStep = 3f
