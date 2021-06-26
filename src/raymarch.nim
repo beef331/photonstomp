@@ -12,8 +12,8 @@ type App = object
   rect: Gluint
 
 var camera = Camera(size: vec4(1280, 720, 0, 0), distance: 1000f)
-camera.pos = vec3(ChunkEdgeSize.float + 2, 5, ChunkEdgeSize / 2)
-camera.matrix = rotateY(90f.toRadians) * rotateX(-45f.toRadians)
+camera.pos = vec3(ChunkEdgeSize.float, 15, ChunkEdgeSize / 2 - 10)
+camera.matrix = rotateY(45f.toRadians) * rotateX(-45f.toRadians)
 
 proc init: App =
   if init(INIT_VIDEO) == 0:
@@ -102,8 +102,8 @@ for blk in chunkData.mitems:
     z = i mod (ChunkEdgeSize * ChunkEdgeSize) div ChunkEdgeSize
   if y == 0:
     blk = dirt
-  #if x == z:
-  #  blk = stone
+  if x == z:
+    blk = stone
   inc i
 
 let
@@ -117,7 +117,9 @@ chunkData.copyTo blockSsbo
 
 shader.setUniform("chunkSize", ChunkEdgeSize)
 
-var epsilon = 0f32
+var
+  lastStep = 3f
+  lastId = 0i32
 
 while app.isRunning:
   let startTime = getMonoTime()
@@ -125,13 +127,18 @@ while app.isRunning:
   app.draw
   let dt = (getMonoTime() - startTime).inMicroseconds.float / 1_000_000f
   time += dt
-  epsilon += dt * mouseY.float * 5
+
+  if time - lastStep >= 0.01:
+    chunkData[lastId] = air
+    lastId = (lastId + chunkData.len + 1) mod chunkData.len
+    chunkData[lastId] = stone
+    #chunkData.copyTo blockSsbo
+    lastStep = time
 
   lightPos.x = sin(time) * 10
   lightPos.copyTo lightUbo
 
   shader.setUniform("time", time)
-  shader.setUniform("epsilon", epsilon)
 
 glDeleteContext(app.context)
 app.window.destroyWindow
