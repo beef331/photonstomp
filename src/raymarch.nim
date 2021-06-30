@@ -12,8 +12,8 @@ type App = object
   rect: Gluint
 
 var camera = Camera(size: vec4(1280, 720, 0, 0), distance: 1000f)
-camera.pos = vec3(ChunkEdgeSize.float + 4, 15, ChunkEdgeSize / 2 - 10)
-camera.matrix = rotateY(45f.toRadians) * rotateX(-45f.toRadians)
+camera.pos = vec3(ChunkEdgeSize / 2, 20, ChunkEdgeSize / 2 - 10)
+camera.matrix = rotateX(-60f.toRadians)
 
 proc init: App =
   if init(INIT_VIDEO) == 0:
@@ -27,22 +27,33 @@ proc init: App =
     loadExtensions()
     glClearColor(0.0, 0.0, 0.0, 1)
 
-
-var mouseY = 0
+var dt = 0f
 
 proc poll(app: var App) =
   var e: Event
-  mouseY = 0
   while pollEvent(addr(e)) != 0:
     # Quit requested
     if e.kind == Quit:
       app.isRunning = false
     # Key pressed
     elif e.kind == KeyDown:
-      if e.key.keysym.sym == K_Escape:
+      case e.key.keysym.sym:
+      of K_ESCAPE:
         app.isRunning = false
-    elif e.kind == MouseWheel:
-      mouseY = e.wheel.y
+      of K_w:
+        camera.pos += camera.matrix * vec3(0, 0, 1) * dt * 10
+      of K_s:
+        camera.pos += camera.matrix * vec3(0, 0, -1) * dt * 10
+      of K_q:
+        camera.pos.y -= dt * 10
+      of K_e:
+        camera.pos.y += dt * 10
+      of K_a:
+        camera.pos.x -= dt * 10
+      of K_d:
+        camera.pos.x += dt * 10
+
+      else: discard
 
 proc draw(app: var App) =
   glClear(GL_ColorBufferBit)
@@ -91,7 +102,7 @@ glEnable(GlDebugOutput)
 glDebugMessageCallback(openGlDebug, nil)
 var
   time = 0f
-  lightPos = vec3(10, 1, 0)
+  lightPos = vec3(0, 1, 1)
   chunkData: Chunk
 
 var i = 0
@@ -100,9 +111,9 @@ for blk in chunkData.mitems:
     x = i mod ChunkEdgeSize
     y = i div (ChunkEdgeSize * ChunkEdgeSize)
     z = i mod (ChunkEdgeSize * ChunkEdgeSize) div ChunkEdgeSize
-  if y == 0:
+  if y <= 2:
     blk = dirt
-  if x == z:
+  if z == x and  y < 8:
     blk = stone
   inc i
 
@@ -130,7 +141,7 @@ while app.isRunning:
   let startTime = getMonoTime()
   app.poll
   app.draw
-  let dt = (getMonoTime() - startTime).inMicroseconds.float / 1_000_000f
+  dt = (getMonoTime() - startTime).inMicroseconds.float / 1_000_000f
   time += dt
 
   if time - lastStep >= 0.01:
@@ -140,9 +151,9 @@ while app.isRunning:
     #chunkData.copyTo blockSsbo
     lastStep = time
 
-  lightPos.x = sin(time) * 10
-  lightPos.copyTo lightUbo
-
+  #lightPos.x = sin(time) * 10
+  #lightPos.copyTo lightUbo
+  camera.copyTo cameraUbo
   shader.setUniform("time", time)
 
 glDeleteContext(app.context)

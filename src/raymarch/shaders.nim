@@ -50,56 +50,83 @@ struct RayResult{
 
 uniform float MinStep = 0.01;
 
+int getInd(ivec3 pos){
+  int index = pos.x + pos.z * chunkSize + pos.y * chunkSize * chunkSize;
+  return (ids[index / 2] >> (index % 2 * 0x10) & 0xffff); //int32 -> int16
+}
+
+vec2 getUvs( in vec3 ro, in vec3 rd) 
+{
+    vec3 m = 1.0/rd;
+    vec3 n = m*ro;
+    vec3 k = abs(m);
+    vec3 t1 = -n - k;
+    vec3 t2 = -n + k;
+    vec2 oU;
+    if( t1.x>t1.y && t1.x>t1.z ) { oU=ro.yz+rd.yz*t1.x;}
+    else if( t1.y>t1.z   )       { oU=ro.zx+rd.zx*t1.y;}
+    else                         { oU=ro.xy+rd.xy*t1.z;}
+    return oU;
+}
+
+float shadowVal(vec3 pos)
+{
+  vec3 ray = normalize(-light.pos);
+
+  ivec3 mapPos = ivec3(floor(pos));
+
+  vec3 deltaDist = abs(vec3(length(ray)) / ray);
+
+  ivec3 rayStep = ivec3(sign(ray));
+
+  vec3 sideDist = (sign(ray) * (vec3(mapPos) - pos) + (sign(ray) * 0.5) + 0.5) * deltaDist; 
+  bvec3 mask;
+
+  mapPos += rayStep;
+  for (int i = 0; i < camera.pos_dist.w; i++) {
+    if (getInd(mapPos) > 0) return 1;
+    mask = lessThanEqual(sideDist.xyz, min(sideDist.yzx, sideDist.zxy));
+    
+    sideDist += vec3(mask) * deltaDist;
+    mapPos += ivec3(vec3(mask)) * rayStep;
+  }
+
+  return 1;
+}
+
 RayResult rayMarch(vec2 coord){
   RayResult result;
   vec3 ray = normalize(mat3(camera.matrix) * vec3(coord, 1));
+  vec3 start = camera.pos_dist.xyz;
 
-  ivec3 pos = ivec3(camera.pos_dist.xyz);
+  ivec3 mapPos = ivec3(floor(start + 0.));
 
-  ivec3 step = ivec3(sign(ray));
+  vec3 deltaDist = abs(vec3(length(ray)) / ray);
 
-  ivec3 nextVoxel = ivec3(pos + step);
+  ivec3 rayStep = ivec3(sign(ray));
 
-  vec3 tmax = vec3( ray.x >= 0 ? (nextVoxel.x - pos.x) / ray.x: MinStep,
-                    ray.y >= 0 ? (nextVoxel.y - pos.y) / ray.y: MinStep,
-                    ray.z >= 0 ? (nextVoxel.z - pos.z) / ray.z: MinStep);
+  vec3 sideDist = (sign(ray) * (vec3(mapPos) - start) + (sign(ray) * 0.5) + 0.5) * deltaDist; 
+  bvec3 mask;
 
-  vec3 delta = vec3(1) / ray * step;
-  delta.x = ray.x != 0 ? delta.x: MinStep;
-  delta.y = ray.y != 0 ? delta.y: MinStep;
-  delta.z = ray.z != 0 ? delta.z: MinStep;
-
-  int lastStep = 0;
-  while(result.hit == 0 && (sign(pos.x) + sign(pos.y) + sign(pos.y)) == 3){
-    if(tmax.x < tmax.y && tmax.x < tmax.z){
-      lastStep = 0;
-      pos.x += step.x;
-      tmax.x += delta.x;
-    }
-    else if(tmax.y < tmax.z){
-      lastStep = 1;
-      pos.y += step.y;
-      tmax.y += delta.y;
-    }else{
-      lastStep = 2;
-      pos.z += step.z;
-      tmax.z += delta.z;
-    }
-
-    int index = pos.x + (pos.z * chunkSize) + (pos.y * chunkSize * chunkSize);
-    result.hit = (ids[index / 2] >> (index % 2 * 0x10) & 0xffff); //int32 -> int16
+  for (int i = 0; i < camera.pos_dist.w; i++) {
+    if (getInd(mapPos) > 0) break;
+    mask = lessThanEqual(sideDist.xyz, min(sideDist.yzx, sideDist.zxy));
+    
+    sideDist += vec3(mask) * deltaDist;
+    mapPos += ivec3(vec3(mask)) * rayStep;
   }
-  result.pos = camera.pos_dist.xyz + ray * vec3(tmax);
+  result.hit = getInd(mapPos);
   if(result.hit > 0){
-    if(lastStep == 0){
-      result.uv = fract(result.pos.zy);
-      result.normal = vec3(float(-step.x), 0.0, 0.0);
-    }else if(lastStep == 1){
-      result.uv = fract(result.pos.xz);
-      result.normal = vec3(0.0, float(-step.y), 0.0);
+    result.pos = mapPos;
+    if(mask.x){
+      result.uv = abs(fract(start.zy + ray.zy * sideDist.x));
+      result.normal = vec3(float(-rayStep.x), 0, 0);
+    }else if(mask.y){
+      result.uv = abs(fract(start.zx + ray.zx * sideDist.y));
+      result.normal = vec3(0, float(-rayStep.y), 0);
     }else{
-      result.uv = fract(result.pos.xy);
-      result.normal = vec3(0.0, 0.0, float(-step.z));
+      result.uv = abs(fract(start.xy + ray.xy * sideDist.z));
+      result.normal = vec3(0, 0, float(-rayStep.z));
     }
   }
   return result;
@@ -118,7 +145,7 @@ void main()
     vec2 uv = vec2(hit % int(tileinfo.y), (hit / int(tileinfo.y))) * spriteTexel + res.uv * spriteTexel;
     vec4 col = texture(tilemap, uv);
     fragColor = vec4(col.rgb * light, 1);
-    fragColor = vec4(res.pos / chunkSize, 1);
+    //fragColor = vec4(res.uv, 0, 1);
 
   }
   else{
