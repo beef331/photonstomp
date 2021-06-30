@@ -69,42 +69,37 @@ RayResult rayMarch(vec2 coord){
   delta.y = ray.y != 0 ? delta.y: MinStep;
   delta.z = ray.z != 0 ? delta.z: MinStep;
 
-  float total = 0;
-  for(int i = 0; i < camera.pos_dist.w; i++){
+  int lastStep = 0;
+  while(result.hit == 0 && (sign(pos.x) + sign(pos.y) + sign(pos.y)) == 3){
     if(tmax.x < tmax.y && tmax.x < tmax.z){
-      result.pos = camera.pos_dist.xyz + (tmax.x + 0.01) * ray;
-      result.uv = fract(result.pos.zy);
-      result.normal = vec3(float(-step.x), 0.0, 0.0);
-
+      lastStep = 0;
       pos.x += step.x;
       tmax.x += delta.x;
     }
     else if(tmax.y < tmax.z){
-      result.pos = camera.pos_dist.xyz + (tmax.y + 0.01) * ray;
-      result.uv = fract(result.pos.xz);
-      result.normal = vec3(0.0, float(-step.y), 0.0);
-
+      lastStep = 1;
       pos.y += step.y;
       tmax.y += delta.y;
     }else{
-      result.pos = camera.pos_dist.xyz + (tmax.z + 0.01) * ray;
-      result.uv = fract(result.pos.xy);
-      result.normal = vec3(0.0, 0.0, float(-step.z));
-
+      lastStep = 2;
       pos.z += step.z;
       tmax.z += delta.z;
     }
-    if(pos.x >= 0 && pos.x < chunkSize &&
-       pos.y >= 0 && pos.y < chunkSize &&
-       pos.z >= 0 && pos.z < chunkSize){
-      int index = pos.x + (pos.z * chunkSize) + (pos.y * chunkSize * chunkSize);
-      int blockId = (ids[index / 2] >> (index % 2 * 0x10) & 0xffff); //int32 -> int16
 
-      if(blockId > 0){
-        result.hit = blockId;
-        result.pos = camera.pos_dist.xyz + (total + 0.01) * ray;
-        return result;
-      }
+    int index = pos.x + (pos.z * chunkSize) + (pos.y * chunkSize * chunkSize);
+    result.hit = (ids[index / 2] >> (index % 2 * 0x10) & 0xffff); //int32 -> int16
+  }
+  result.pos = camera.pos_dist.xyz + ray * vec3(tmax);
+  if(result.hit > 0){
+    if(lastStep == 0){
+      result.uv = fract(result.pos.zy);
+      result.normal = vec3(float(-step.x), 0.0, 0.0);
+    }else if(lastStep == 1){
+      result.uv = fract(result.pos.xz);
+      result.normal = vec3(0.0, float(-step.y), 0.0);
+    }else{
+      result.uv = fract(result.pos.xy);
+      result.normal = vec3(0.0, 0.0, float(-step.z));
     }
   }
   return result;
@@ -123,6 +118,7 @@ void main()
     vec2 uv = vec2(hit % int(tileinfo.y), (hit / int(tileinfo.y))) * spriteTexel + res.uv * spriteTexel;
     vec4 col = texture(tilemap, uv);
     fragColor = vec4(col.rgb * light, 1);
+    fragColor = vec4(res.pos / chunkSize, 1);
 
   }
   else{
