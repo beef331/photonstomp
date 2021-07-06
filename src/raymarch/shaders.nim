@@ -74,8 +74,9 @@ vec3 intersectionPoint( in vec3 ro, in vec3 rd, in float side)
 
 float shadowVal(vec3 pos)
 {
+  return 1;
   vec3 ray = normalize(-light.pos);
-
+  
   ivec3 mapPos = ivec3(floor(pos));
 
   vec3 deltaDist = abs(vec3(length(ray)) / ray);
@@ -83,11 +84,11 @@ float shadowVal(vec3 pos)
   ivec3 rayStep = ivec3(sign(ray));
 
   vec3 sideDist = (sign(ray) * (vec3(mapPos) - pos) + (sign(ray) * 0.5) + 0.5) * deltaDist; 
-  bvec3 mask;
-
-  mapPos += rayStep;
+  bvec3 mask = lessThanEqual(sideDist.xyz, min(sideDist.yzx, sideDist.zxy));
+  sideDist += vec3(mask) * deltaDist;
+  mapPos += ivec3(vec3(mask)) * rayStep;
   for (int i = 0; i < camera.pos_dist.w; i++) {
-    if (getInd(mapPos) > 0) return 1;
+    if (getInd(mapPos) > 0) return 0;
     mask = lessThanEqual(sideDist.xyz, min(sideDist.yzx, sideDist.zxy));
     sideDist += vec3(mask) * deltaDist;
     mapPos += ivec3(vec3(mask)) * rayStep;
@@ -109,16 +110,14 @@ RayResult rayMarch(vec2 coord){
 
   vec3 sideDist = (rayStep * (vec3(mapPos) - start) + (sign(ray) * 0.5) + 0.5) * deltaDist;
   bvec3 mask;
-  int invalidCount = 0;
   for (int i = 0; i < camera.pos_dist.w; i++) {
-    if (getInd(mapPos) > 0 && isValid(mapPos) || invalidCount > 35) break;
-    invalidCount += !isValid(mapPos)? 1 : 0;
+    if (getInd(mapPos) > 0 && isValid(mapPos)) break;
     mask = lessThanEqual(sideDist.xyz, min(sideDist.yzx, sideDist.zxy));
 
     sideDist += vec3(mask) * deltaDist;
     mapPos += ivec3(mask) * rayStep;
   }
-  if(!isValid(mapPos) && invalidCount > 35){
+  if(!isValid(mapPos)){
     result.hit = 0;
     return result;
   }
@@ -144,7 +143,7 @@ RayResult rayMarch(vec2 coord){
 void main()
 {
   vec2 uv = vec2(gl_FragCoord.xy - 0.5 * camera.size.xy) / camera.size.y;
-  vec3 lightPos = light.pos.xyz;
+  vec3 lightPos = -light.pos.xyz;
 
   RayResult res = rayMarch(uv);
   if(res.hit > 0){
@@ -153,7 +152,7 @@ void main()
     float spriteTexel = tileinfo.x * tileinfo.z;
     vec2 uv = vec2(hit % int(tileinfo.y), (hit / int(tileinfo.y))) * spriteTexel + res.uv * spriteTexel;
     vec4 col = texture(tilemap, uv);
-    fragColor = vec4(col.rgb * light, 1);
+    fragColor = vec4(col.rgb * min(light, shadowVal(floor(res.pos))), 1);
     //fragColor = vec4(res.uv, 0, 1);
   }
   else{
