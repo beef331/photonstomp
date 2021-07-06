@@ -1,7 +1,7 @@
 import vmath
 const
   MaxLightStrength = 16
-  ChunkEdgeSize* = 50i32
+  ChunkEdgeSize* = 10
   ChunkSize* = ChunkEdgeSize * ChunkEdgeSize * ChunkEdgeSize
 
 type

@@ -50,23 +50,26 @@ struct RayResult{
 
 uniform float MinStep = 0.01;
 
+bool isValid(ivec3 pos){
+  return pos.x >= 0 && pos.x < chunkSize &&
+         pos.y >= 0 && pos.y < chunkSize &&
+         pos.z >= 0 && pos.z < chunkSize;
+}
+
 int getInd(ivec3 pos){
   int index = pos.x + pos.z * chunkSize + pos.y * chunkSize * chunkSize;
   return (ids[index / 2] >> (index % 2 * 0x10) & 0xffff); //int32 -> int16
 }
 
-vec2 getUvs( in vec3 ro, in vec3 rd) 
+vec3 intersectionPoint( in vec3 ro, in vec3 rd, in float side) 
 {
     vec3 m = 1.0/rd;
-    vec3 n = m*ro;
+    float offset = side < 0 ? -1: 0;
+    vec3 n = m * (camera.pos_dist.xyz + offset - ro);
     vec3 k = abs(m);
     vec3 t1 = -n - k;
-    vec3 t2 = -n + k;
-    vec2 oU;
-    if( t1.x>t1.y && t1.x>t1.z ) { oU=ro.yz+rd.yz*t1.x;}
-    else if( t1.y>t1.z   )       { oU=ro.zx+rd.zx*t1.y;}
-    else                         { oU=ro.xy+rd.xy*t1.z;}
-    return oU;
+    float tN = max( max( t1.x, t1.y ), t1.z );
+    return camera.pos_dist.xyz + rd * tN;
 }
 
 float shadowVal(vec3 pos)
@@ -86,7 +89,6 @@ float shadowVal(vec3 pos)
   for (int i = 0; i < camera.pos_dist.w; i++) {
     if (getInd(mapPos) > 0) return 1;
     mask = lessThanEqual(sideDist.xyz, min(sideDist.yzx, sideDist.zxy));
-    
     sideDist += vec3(mask) * deltaDist;
     mapPos += ivec3(vec3(mask)) * rayStep;
   }
@@ -105,28 +107,35 @@ RayResult rayMarch(vec2 coord){
 
   ivec3 rayStep = ivec3(sign(ray));
 
-  vec3 sideDist = (sign(ray) * (vec3(mapPos) - start) + (sign(ray) * 0.5) + 0.5) * deltaDist; 
+  vec3 sideDist = (rayStep * (vec3(mapPos) - start) + (sign(ray) * 0.5) + 0.5) * deltaDist;
   bvec3 mask;
-
+  int invalidCount = 0;
   for (int i = 0; i < camera.pos_dist.w; i++) {
-    if (getInd(mapPos) > 0) break;
+    if (getInd(mapPos) > 0 && isValid(mapPos) || invalidCount > 35) break;
+    invalidCount += !isValid(mapPos)? 1 : 0;
     mask = lessThanEqual(sideDist.xyz, min(sideDist.yzx, sideDist.zxy));
-    
+
     sideDist += vec3(mask) * deltaDist;
-    mapPos += ivec3(vec3(mask)) * rayStep;
+    mapPos += ivec3(mask) * rayStep;
+  }
+  if(!isValid(mapPos) && invalidCount > 35){
+    result.hit = 0;
+    return result;
   }
   result.hit = getInd(mapPos);
   if(result.hit > 0){
-    result.pos = mapPos;
     if(mask.x){
-      result.uv = abs(fract(start.zy + ray.zy * sideDist.x));
       result.normal = vec3(float(-rayStep.x), 0, 0);
+      result.pos = intersectionPoint(mapPos, ray, -rayStep.x);
+      result.uv = fract(result.pos.zy);
     }else if(mask.y){
-      result.uv = abs(fract(start.zx + ray.zx * sideDist.y));
       result.normal = vec3(0, float(-rayStep.y), 0);
+      result.pos = intersectionPoint(mapPos, ray, -rayStep.y);
+      result.uv = fract(result.pos.xz);
     }else{
-      result.uv = abs(fract(start.xy + ray.xy * sideDist.z));
       result.normal = vec3(0, 0, float(-rayStep.z));
+      result.pos = intersectionPoint(mapPos, ray, -rayStep.z);
+      result.uv = fract(result.pos.xy);
     }
   }
   return result;
@@ -146,7 +155,6 @@ void main()
     vec4 col = texture(tilemap, uv);
     fragColor = vec4(col.rgb * light, 1);
     //fragColor = vec4(res.uv, 0, 1);
-
   }
   else{
     fragColor = vec4(0);

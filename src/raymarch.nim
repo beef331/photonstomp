@@ -11,9 +11,9 @@ type App = object
   isRunning: bool
   rect: Gluint
 
-var camera = Camera(size: vec4(1280, 720, 0, 0), distance: 1000f)
-camera.pos = vec3(ChunkEdgeSize / 2, 20, ChunkEdgeSize / 2 - 10)
-camera.matrix = rotateX(-60f.toRadians)
+var camera = Camera(size: vec4(1280, 720, 0, 0), distance: 100f)
+camera.pos = vec3(3, 0, -3)
+camera.matrix = rotateY((45).toRadians)
 
 proc init: App =
   if init(INIT_VIDEO) == 0:
@@ -49,9 +49,9 @@ proc poll(app: var App) =
       of K_e:
         camera.pos.y += dt * 10
       of K_a:
-        camera.pos.x -= dt * 10
+        camera.pos += camera.matrix * vec3(-1, 0, 0) * dt * 10
       of K_d:
-        camera.pos.x += dt * 10
+        camera.pos += camera.matrix * vec3(1, 0, 0) * dt * 10
 
       else: discard
 
@@ -113,7 +113,9 @@ for blk in chunkData.mitems:
     z = i mod (ChunkEdgeSize * ChunkEdgeSize) div ChunkEdgeSize
   if y <= 2:
     blk = dirt
-  if z == x and  y < 8:
+  if x < 4:
+    blk = stone
+  if y == 9:
     blk = stone
   inc i
 
