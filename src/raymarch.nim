@@ -33,6 +33,8 @@ var
   scale = 0.05
   dirtied = false
   pressedDestroy = false
+  pressedSpace = false
+
 proc poll(app: var App) =
   var e: Event
   while pollEvent(addr(e)) != 0:
@@ -64,6 +66,9 @@ proc poll(app: var App) =
         dirtied = true
       of K_h:
         pressedDestroy = true
+      of K_space:
+        pressedSpace = true
+
       else: discard
 
 proc draw(app: var App) =
@@ -158,15 +163,28 @@ while app.isRunning:
       queueModification(BlockModification(
         kind: BlockModificationKind.circle,
         pos: pos,
-        radius: rand(30..100)))
+        radius: rand(10..20)))
     pressedDestroy = false
+    queueModification(BlockModification(
+      kind: BlockModificationKind.box,
+      width: ChunkEdgeSize,
+      depth: ChunkEdgeSize,
+      height: 3))
+
+  if pressedSpace:
+    let pos = camera.raycast(chunkData)
+    if pos > 0:
+      queueModification(BlockModification(
+        kind: BlockModificationKind.circle,
+        pos: pos,
+        radius: rand(10)))
+    pressedSpace = false
   while true:
     let res = sliceChannel.tryRecv()
     if not res[0]: break
     chunkData.copyTo blockSsbo, res[1]
-    echo res[1]
 
-  #echo 1 / dt
+  echo 1 / dt
 
 glDeleteContext(app.context)
 app.window.destroyWindow

@@ -91,7 +91,7 @@ proc copyTo*[T](val: T, ssbo: Ssbo[T]) =
 proc copyTo*[T](val: T, ssbo: Ssbo[T], slice: Slice[int]) =
   glBindBuffer(GlShaderStorageBuffer, ssbo.GLuint)
   let newData = val[slice.a].unsafeAddr
-  glBufferSubData(GlShaderStorageBuffer, slice.a, slice.b - slice.a, newData)
+  glBufferSubData(GlShaderStorageBuffer, slice.a * sizeof(int16), (slice.b - slice.a) * sizeOf(int16), newData)
   glBindBuffer(GlShaderStorageBuffer, 0.Gluint)
 
 proc setUniform*(shader: Gluint, uniform: string, value: float32) =

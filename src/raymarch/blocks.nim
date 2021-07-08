@@ -1,5 +1,6 @@
 import vmath, noisy
 import std/[cpuinfo, strformat]
+import cameras
 
 const
   MaxLightStrength = 16
@@ -73,6 +74,7 @@ template x(i: int): int = i mod ChunkEdgeSize
 template y(i: int): int = i div ChunkEdgeSqr
 template z(i: int): int = i mod ChunkEdgeSqr div ChunkEdgeSize
 
+proc toIndex(v: IVec3): int = v.x + v.y * ChunkEdgeSqr + v.z * ChunkEdgeSize
 
 iterator modifyBlocks*(data: ptr Chunk, modif: BlockModification): Slice[int] =
   case modif.kind
@@ -109,26 +111,28 @@ iterator modifyBlocks*(data: ptr Chunk, modif: BlockModification): Slice[int] =
           modif.radius
       xMax =
         if modif.pos.x + modif.radius < ChunkEdgeSize:
-          modif.radius
+          modif.radius * 2
         else:
           ChunkEdgeSize - modif.pos.x
       yMax =
         if modif.pos.y + modif.radius < ChunkEdgeSize:
-          modif.radius
+          modif.radius * 2
         else:
           ChunkEdgeSize - modif.pos.y
       zMax = 
         if modif.pos.z + modif.radius < ChunkEdgeSize:
-          modif.radius
+          modif.radius * 2
         else:
           ChunkEdgeSize - modif.pos.z
       pos = modif.pos - xMin - (zMin * ChunkEdgeSize) - (yMin * ChunkEdgeSqr)
-
+      spherePos = ivec3(modif.pos.x.int32, modif.pos.y.int32, modif.pos.z.int32)
     for y in 0..yMax:
       let pos = pos + y * ChunkEdgeSqr
       for x in 0..xMax:
         for z in 0..zMax:
-          data[pos + x + z * ChunkEdgeSize] = modif.newBlock
+          let blkPos = ivec3((pos.x + x).int32,(pos.y + y).int32, (pos.z + z).int32)
+          if blkPos.distSq(spherePos) <= modif.radius * modif.radius:
+            data[pos + x + z * ChunkEdgeSize] = modif.newBlock
       yield Slice[int](a: pos, b: pos + xMax + zMax * ChunkEdgeSize)
 
 var
@@ -158,3 +162,29 @@ proc queueModification*(modif: BlockModification) =
   #modifs.add(modif) # todo - use this to dispatch cleanly
   queueChannel[toDispatch].send(modif)
   toDispatch = (toDispatch + 1 + modifThreads.len) mod modifThreads.len
+
+template sign[T](vec: GVec3[T]): Gvec3[T] = gvec3(T(vec.x.sign), T(vec.y.sign), T(vec.z.sign))
+
+proc raycast*(camera: Camera, data: Chunk): int =
+  result = -1
+  let
+    ray = camera.matrix * vec3(0, 0, 1)
+    deltaDist = abs(length(ray)) / ray
+    rayStep = ivec3(ray.x.sign.int32, ray.y.sign.int32, ray.z.sign.int32)
+  var
+    pos = ivec3(camera.pos + camera.matrix * vec3(0.5, 0, 0) + camera.matrix * vec3(0, 0.5, 0))
+    sideDist = (sign(ray) * (vec3(pos) - camera.pos) + (sign(ray) * 0.5) + 0.5) * deltaDist
+  
+  for i in 0..ChunkEdgeSize:
+    if pos.x in 0..ChunkEdgeSize and 
+       pos.y in 0..ChunkEdgeSize and
+       pos.z in 0..ChunkEdgeSize and data[pos.toIndex] != air: return pos.toIndex
+    if sideDist.x < sideDist.y and sideDist.x < sideDist.z:
+      sideDist.x += deltaDist.x
+      pos.x += rayStep.x
+    elif sideDist.y < sideDist.z:
+      sideDist.y += deltaDist.y
+      pos.y += rayStep.y
+    else:
+      sideDist.z += deltaDist.z
+      pos.z += rayStep.z
